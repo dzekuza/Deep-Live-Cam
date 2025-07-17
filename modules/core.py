@@ -13,11 +13,12 @@ import shutil
 import argparse
 import torch
 import onnxruntime
-import tensorflow
 
 import modules.globals
 import modules.metadata
-import modules.ui as ui
+# Import UI only when needed (not in headless mode)
+ui = None
+
 from modules.processors.frame.core import get_frame_processors_modules
 from modules.utilities import has_image_extension, is_image, is_video, detect_fps, create_video, extract_frames, get_temp_frame_paths, restore_audio, create_temp, move_temp, clean_temp, normalize_output_path
 
@@ -39,7 +40,6 @@ def parse_args() -> None:
     program.add_argument('--keep-audio', help='keep original audio', dest='keep_audio', action='store_true', default=True)
     program.add_argument('--keep-frames', help='keep temporary frames', dest='keep_frames', action='store_true', default=False)
     program.add_argument('--many-faces', help='process every face', dest='many_faces', action='store_true', default=False)
-    program.add_argument('--nsfw-filter', help='filter the NSFW image or video', dest='nsfw_filter', action='store_true', default=False)
     program.add_argument('--map-faces', help='map source target faces', dest='map_faces', action='store_true', default=False)
     program.add_argument('--mouth-mask', help='mask the mouth region', dest='mouth_mask', action='store_true', default=False)
     program.add_argument('--video-encoder', help='adjust output video encoder', dest='video_encoder', default='libx264', choices=['libx264', 'libx265', 'libvpx-vp9'])
@@ -70,7 +70,7 @@ def parse_args() -> None:
     modules.globals.keep_frames = args.keep_frames
     modules.globals.many_faces = args.many_faces
     modules.globals.mouth_mask = args.mouth_mask
-    modules.globals.nsfw_filter = args.nsfw_filter
+    modules.globals.nsfw_filter = False  # Disable NSFW filtering
     modules.globals.map_faces = args.map_faces
     modules.globals.video_encoder = args.video_encoder
     modules.globals.video_quality = args.video_quality
@@ -137,10 +137,7 @@ def suggest_execution_threads() -> int:
 
 
 def limit_resources() -> None:
-    # prevent tensorflow memory leak
-    gpus = tensorflow.config.experimental.list_physical_devices('GPU')
-    for gpu in gpus:
-        tensorflow.config.experimental.set_memory_growth(gpu, True)
+    # Disable TensorFlow memory management since we removed TensorFlow
     # limit memory usage
     if modules.globals.max_memory:
         memory = modules.globals.max_memory * 1024 ** 3
@@ -172,7 +169,7 @@ def pre_check() -> bool:
 
 def update_status(message: str, scope: str = 'DLC.CORE') -> None:
     print(f'[{scope}] {message}')
-    if not modules.globals.headless:
+    if not modules.globals.headless and ui:
         ui.update_status(message)
 
 def start() -> None:
@@ -182,8 +179,7 @@ def start() -> None:
     update_status('Processing...')
     # process image to image
     if has_image_extension(modules.globals.target_path):
-        if modules.globals.nsfw_filter and ui.check_and_ignore_nsfw(modules.globals.target_path, destroy):
-            return
+        # NSFW filtering disabled - removed TensorFlow dependency
         try:
             shutil.copy2(modules.globals.target_path, modules.globals.output_path)
         except Exception as e:
@@ -198,8 +194,7 @@ def start() -> None:
             update_status('Processing to image failed!')
         return
     # process image to videos
-    if modules.globals.nsfw_filter and ui.check_and_ignore_nsfw(modules.globals.target_path, destroy):
-        return
+    # NSFW filtering disabled - removed TensorFlow dependency
 
     if not modules.globals.map_faces:
         update_status('Creating temp resources...')
@@ -212,36 +207,22 @@ def start() -> None:
         update_status('Progressing...', frame_processor.NAME)
         frame_processor.process_video(modules.globals.source_path, temp_frame_paths)
         release_resources()
-    # handles fps
-    if modules.globals.keep_fps:
-        update_status('Detecting fps...')
-        fps = detect_fps(modules.globals.target_path)
-        update_status(f'Creating video with {fps} fps...')
-        create_video(modules.globals.target_path, fps)
-    else:
-        update_status('Creating video with 30.0 fps...')
-        create_video(modules.globals.target_path)
-    # handle audio
-    if modules.globals.keep_audio:
-        if modules.globals.keep_fps:
-            update_status('Restoring audio...')
-        else:
-            update_status('Restoring audio might cause issues as fps are not kept...')
+
+    if not modules.globals.map_faces:
+        update_status('Creating video...')
+        create_video(modules.globals.target_path, modules.globals.output_path)
+        update_status('Restoring audio...')
         restore_audio(modules.globals.target_path, modules.globals.output_path)
-    else:
-        move_temp(modules.globals.target_path, modules.globals.output_path)
-    # clean and validate
-    clean_temp(modules.globals.target_path)
-    if is_video(modules.globals.target_path):
+        update_status('Cleaning temp resources...')
+        clean_temp(modules.globals.target_path)
         update_status('Processing to video succeed!')
     else:
-        update_status('Processing to video failed!')
+        update_status('Processing to video succeed!')
 
 
 def destroy(to_quit=True) -> None:
-    if modules.globals.target_path:
-        clean_temp(modules.globals.target_path)
-    if to_quit: quit()
+    if to_quit:
+        sys.exit()
 
 
 def run() -> None:
@@ -255,5 +236,8 @@ def run() -> None:
     if modules.globals.headless:
         start()
     else:
+        # Import UI only when needed for GUI mode
+        global ui
+        import modules.ui as ui
         window = ui.init(start, destroy, modules.globals.lang)
         window.mainloop()

@@ -674,25 +674,8 @@ def select_output_path(start: Callable[[], None]) -> None:
 
 
 def check_and_ignore_nsfw(target, destroy: Callable = None) -> bool:
-    """Check if the target is NSFW.
-    TODO: Consider to make blur the target.
-    """
-    from numpy import ndarray
-    from modules.predicter import predict_image, predict_video, predict_frame
-
-    if type(target) is str:  # image/video file path
-        check_nsfw = predict_image if has_image_extension(target) else predict_video
-    elif type(target) is ndarray:  # frame object
-        check_nsfw = predict_frame
-    if check_nsfw and check_nsfw(target):
-        if destroy:
-            destroy(
-                to_quit=False
-            )  # Do not need to destroy the window frame if the target is NSFW
-        update_status("Processing ignored!")
-        return True
-    else:
-        return False
+    """NSFW filtering disabled - removed TensorFlow dependency"""
+    return False
 
 
 def fit_image_to_size(image, width: int, height: int):
@@ -759,8 +742,9 @@ def update_preview(frame_number: int = 0) -> None:
     if modules.globals.source_path and modules.globals.target_path:
         update_status("Processing...")
         temp_frame = get_video_frame(modules.globals.target_path, frame_number)
-        if modules.globals.nsfw_filter and check_and_ignore_nsfw(temp_frame):
-            return
+        # NSFW filtering disabled - removed TensorFlow dependency
+        # if modules.globals.nsfw_filter and check_and_ignore_nsfw(temp_frame):
+        #     return
         for frame_processor in get_frame_processors_modules(
                 modules.globals.frame_processors
         ):
