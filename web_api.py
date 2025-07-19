@@ -340,16 +340,6 @@ def process_frame():
                 shutil.copy2(frame_path, output_path)
                 print(f"Face detection failed, returning original frame: {str(e)}")
                 
-            # Ensure we always have a valid output file
-            if not os.path.exists(output_path):
-                # If output doesn't exist, copy the original frame
-                shutil.copy2(frame_path, output_path)
-                print(f"Output file not created, using original frame")
-                
-            # Check if output file was created
-            if not os.path.exists(output_path):
-                return jsonify({"error": "Failed to generate output image"}), 500
-                
         except Exception as e:
             # Clean up output file if it exists
             try:
