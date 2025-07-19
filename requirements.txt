@@ -18,3 +18,4 @@ onnxruntime-gpu==1.22.0; sys_platform != 'darwin'
 protobuf==4.25.1
 flask>=2.3.0
 flask-cors>=4.0.0
+gunicorn>=21.0.0
