@@ -1,180 +1,115 @@
-# Railway Deployment Guide for Deep-Live-Cam
+# Railway Deployment Guide
 
-This guide will help you deploy your Deep-Live-Cam face swap application to Railway, making it available online 24/7.
+## Quick Deploy
 
-## Prerequisites
+1. **Fork/Clone** this repository
+2. **Connect** to Railway
+3. **Deploy** - Railway will automatically detect the Python app
 
-- GitHub account
-- Railway account (free at [railway.app](https://railway.app))
-- Your Deep-Live-Cam code pushed to a GitHub repository
+## Configuration
 
-## Step 1: Prepare Your Repository
+The app uses these files for Railway deployment:
 
-Your repository should contain:
+- `railway.json` - Railway configuration
+- `start.sh` - Startup script
+- `wsgi.py` - Alternative WSGI entry point
+- `requirements-railway.txt` - Railway-optimized dependencies
+- `Procfile` - Heroku-style process definition
 
-- ✅ `Dockerfile` (already configured)
-- ✅ `railway.json` (deployment config)
-- ✅ `.dockerignore` (optimizes build)
-- ✅ `requirements-docker.txt` (fixed for deployment)
-- ✅ `web_api.py` (Flask web API)
+## Environment Variables
 
-## Step 2: Deploy to Railway
+Railway automatically sets:
+- `PORT` - The port to bind to (usually 8080)
+- `RAILWAY_ENVIRONMENT` - Set to "production"
 
-### Option A: Deploy via Railway Dashboard
+## Troubleshooting 502 Bad Gateway
 
-1. **Go to Railway Dashboard**
-   - Visit [railway.app](https://railway.app)
-   - Sign in with your GitHub account
+### Common Causes:
 
-2. **Create New Project**
-   - Click "New Project"
-   - Select "Deploy from GitHub repo"
-   - Choose your Deep-Live-Cam repository
+1. **Missing Dependencies**: The app requires heavy ML libraries
+2. **Memory Issues**: Face processing requires significant RAM
+3. **Startup Timeout**: App takes time to load models
+4. **Port Binding**: App must bind to `0.0.0.0:PORT`
 
-3. **Configure Deployment**
-   - Railway will automatically detect the Dockerfile
-   - The `railway.json` file will configure the deployment
-   - No additional configuration needed
+### Debug Steps:
 
-4. **Deploy**
-   - Click "Deploy" to start the build process
-   - Wait for the build to complete (5-10 minutes)
+1. **Check Logs**: View Railway deployment logs
+2. **Test Health Endpoint**: Visit `/health` after deployment
+3. **Verify Dependencies**: Ensure all packages install correctly
+4. **Check Memory**: Railway provides limited RAM
 
-### Option B: Deploy via Railway CLI
+### Solutions:
 
-1. **Install Railway CLI**
-
+1. **Use Railway-Specific Requirements**:
    ```bash
-   npm install -g @railway/cli
+   # Use requirements-railway.txt instead of requirements.txt
+   pip install -r requirements-railway.txt
    ```
 
-2. **Login to Railway**
+2. **Increase Memory** (if available):
+   - Railway Pro plans offer more RAM
+   - Consider model optimization
 
+3. **Use Headless OpenCV**:
+   ```python
+   # requirements-railway.txt uses opencv-python-headless
+   ```
+
+4. **CPU-Only PyTorch**:
+   ```python
+   # requirements-railway.txt uses torch+cpu
+   ```
+
+## Health Check Endpoints
+
+- `GET /health` - Basic health check
+- `GET /ready` - Railway-ready check
+- `GET /ping` - Simple ping test
+
+## Manual Deployment
+
+If automatic deployment fails:
+
+1. **SSH into Railway**:
    ```bash
    railway login
+   railway shell
    ```
 
-3. **Deploy**
-
+2. **Install Dependencies**:
    ```bash
-   railway up
+   pip install -r requirements-railway.txt
    ```
 
-## Step 3: Configure Environment Variables (Optional)
+3. **Test Locally**:
+   ```bash
+   python wsgi.py
+   ```
 
-In Railway dashboard, you can set environment variables:
+4. **Check Logs**:
+   ```bash
+   railway logs
+   ```
 
-- `PORT=8000` (default, Railway sets this automatically)
-- `FLASK_ENV=production`
-- `FLASK_DEBUG=0`
+## Performance Optimization
 
-## Step 4: Access Your Deployed App
+1. **Use CPU-Only Models**: Reduces memory usage
+2. **Lazy Loading**: Load models on first request
+3. **Caching**: Cache processed results
+4. **Image Compression**: Reduce input image sizes
 
-Once deployed, Railway will provide:
+## Monitoring
 
-- **Public URL**: `https://your-app-name.railway.app`
-- **Custom Domain**: You can add your own domain in Railway settings
-
-## Step 5: Monitor Your Deployment
-
-### Railway Dashboard Features
-
-- **Logs**: View real-time application logs
-- **Metrics**: Monitor CPU, memory usage
-- **Deployments**: Track deployment history
-- **Settings**: Configure environment variables
-
-### Health Check
-
-Your app includes a health endpoint: `https://your-app-name.railway.app/health`
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Build Fails**
-   - Check Railway logs for error messages
-   - Ensure all files are committed to GitHub
-   - Verify Dockerfile syntax
-
-2. **App Won't Start**
-   - Check if port 8000 is exposed in Dockerfile
-   - Verify `web_api.py` starts correctly
-   - Check environment variables
-
-3. **Face Swap Not Working**
-   - Ensure AI models downloaded correctly
-   - Check if all dependencies installed
-   - Verify GPU/CPU compatibility
-
-### Performance Tips
-
-1. **Use Railway Pro** (if needed)
-   - Better CPU/memory allocation
-   - GPU instances available
-   - Faster build times
-
-2. **Optimize Docker Image**
-   - Multi-stage builds
-   - Layer caching
-   - Smaller base images
-
-## Cost Estimation
-
-### Railway Free Tier
-
-- **$5 credit/month**
-- **512MB RAM, 0.5 CPU**
-- **Suitable for testing**
-
-### Railway Pro
-
-- **Pay-as-you-go pricing**
-- **Better performance**
-- **GPU instances available**
-
-## Security Considerations
-
-1. **Environment Variables**
-   - Never commit secrets to GitHub
-   - Use Railway's environment variable feature
-
-2. **CORS Configuration**
-   - Your app allows all origins (`*`)
-   - Consider restricting for production
-
-3. **Rate Limiting**
-   - Consider adding rate limiting for production use
-
-## Next Steps
-
-After successful deployment:
-
-1. **Test the Web Interface**
-   - Upload images
-   - Test face swap functionality
-   - Verify all features work
-
-2. **Monitor Performance**
-   - Check Railway metrics
-   - Monitor response times
-   - Watch for errors
-
-3. **Scale if Needed**
-   - Upgrade to Railway Pro for better performance
-   - Add custom domain
-   - Configure CDN
+Monitor these metrics:
+- Memory usage
+- Response times
+- Error rates
+- Model loading times
 
 ## Support
 
-- **Railway Documentation**: [docs.railway.app](https://docs.railway.app)
-- **Railway Discord**: [discord.gg/railway](https://discord.gg/railway)
-- **GitHub Issues**: Report bugs in your repository
-
----
-
-**Your Deep-Live-Cam app will be available at:**
-`https://your-app-name.railway.app`
-
-**Health check:**
-`https://your-app-name.railway.app/health` 
+If issues persist:
+1. Check Railway status page
+2. Review application logs
+3. Test with minimal dependencies
+4. Consider alternative deployment platforms 

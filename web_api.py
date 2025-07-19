@@ -760,35 +760,39 @@ if __name__ == '__main__':
         print(f"   GET  /download/<path> - Download results")
         
         # Use Gunicorn for production, Flask dev server for development
-        if os.environ.get('RAILWAY_ENVIRONMENT') == 'production':
-            # Production: Use Gunicorn
-            import gunicorn.app.base
-            
-            class StandaloneApplication(gunicorn.app.base.BaseApplication):
-                def __init__(self, app, options=None):
-                    self.options = options or {}
-                    self.application = app
-                    super().__init__()
+        if os.environ.get('RAILWAY_ENVIRONMENT') == 'production' or os.environ.get('PORT'):
+            # Production: Use Gunicorn with simpler configuration
+            try:
+                import gunicorn.app.base
                 
-                def load_config(self):
-                    for key, value in self.options.items():
-                        self.cfg.set(key.lower(), value)
+                class StandaloneApplication(gunicorn.app.base.BaseApplication):
+                    def __init__(self, app, options=None):
+                        self.options = options or {}
+                        self.application = app
+                        super().__init__()
+                    
+                    def load_config(self):
+                        for key, value in self.options.items():
+                            self.cfg.set(key.lower(), value)
+                    
+                    def load(self):
+                        return self.application
                 
-                def load(self):
-                    return self.application
-            
-            options = {
-                'bind': f'{host}:{port}',
-                'workers': 1,
-                'worker_class': 'sync',
-                'timeout': 120,
-                'keepalive': 2,
-                'max_requests': 1000,
-                'max_requests_jitter': 50,
-                'preload_app': False
-            }
-            
-            StandaloneApplication(app, options).run()
+                options = {
+                    'bind': f'{host}:{port}',
+                    'workers': 1,
+                    'worker_class': 'sync',
+                    'timeout': 120,
+                    'keepalive': 2,
+                    'max_requests': 1000,
+                    'max_requests_jitter': 50,
+                    'preload_app': False
+                }
+                
+                StandaloneApplication(app, options).run()
+            except ImportError:
+                print("⚠️  Gunicorn not available, falling back to Flask dev server")
+                app.run(host=host, port=port, debug=False)
         else:
             # Development: Use Flask dev server
             app.run(host=host, port=port, debug=False)
