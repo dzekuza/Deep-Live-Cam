@@ -62,7 +62,15 @@ web_app = WebDeepLiveCam()
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    return jsonify({"status": "healthy", "version": "1.8"})
+    try:
+        return jsonify({
+            "status": "healthy", 
+            "version": "1.8",
+            "timestamp": time.time(),
+            "port": os.environ.get('PORT', '8000')
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 @app.route('/test_download', methods=['GET'])
 def test_download():
@@ -72,6 +80,11 @@ def test_download():
         return send_file(test_file, as_attachment=True)
     else:
         return jsonify({"error": f"Test file not found at {test_file}"}), 404
+
+@app.route('/ping', methods=['GET'])
+def ping():
+    """Simple ping endpoint for testing"""
+    return jsonify({"message": "pong", "timestamp": time.time()})
 
 @app.route('/status', methods=['GET'])
 def get_status():
@@ -726,22 +739,31 @@ def index():
     '''
 
 if __name__ == '__main__':
-    # Get port from environment variable (for Railway) or use default
-    port = int(os.environ.get('PORT', 8000))
-    
-    # Get host from environment variable or use default
-    host = os.environ.get('HOST', '0.0.0.0')
-    
-    print(f"🚀 Starting Deep-Live-Cam Web API...")
-    print(f"📋 Available endpoints:")
-    print(f"   GET  /           - Web interface")
-    print(f"   GET  /health     - Health check")
-    print(f"   GET  /status     - Processing status")
-    print(f"   GET  /live_status - Live mode status")
-    print(f"   POST /upload     - Upload files")
-    print(f"   POST /process_image - Process via JSON API")
-    print(f"   POST /process_frame - Process live webcam frame")
-    print(f"   GET  /download/<path> - Download results")
-    
-    # Start the Flask app
-    app.run(host=host, port=port, debug=False) 
+    try:
+        # Get port from environment variable (for Railway) or use default
+        port = int(os.environ.get('PORT', 8000))
+        
+        # Get host from environment variable or use default
+        host = os.environ.get('HOST', '0.0.0.0')
+        
+        print(f"🚀 Starting Deep-Live-Cam Web API...")
+        print(f"📋 Environment:")
+        print(f"   PORT: {port}")
+        print(f"   HOST: {host}")
+        print(f"   Available endpoints:")
+        print(f"   GET  /           - Web interface")
+        print(f"   GET  /health     - Health check")
+        print(f"   GET  /status     - Processing status")
+        print(f"   GET  /live_status - Live mode status")
+        print(f"   POST /upload     - Upload files")
+        print(f"   POST /process_image - Process via JSON API")
+        print(f"   POST /process_frame - Process live webcam frame")
+        print(f"   GET  /download/<path> - Download results")
+        
+        # Start the Flask app
+        app.run(host=host, port=port, debug=False)
+    except Exception as e:
+        print(f"❌ Failed to start server: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        exit(1) 
