@@ -14,6 +14,7 @@
 ## 🚀 Deployment Steps
 
 1. **Push to GitHub**
+
    ```bash
    git add .
    git commit -m "Prepare for Railway deployment"
@@ -40,6 +41,7 @@
 ## 🔧 Troubleshooting
 
 If deployment fails:
+
 1. Check Railway logs
 2. Verify all files committed to GitHub
 3. Ensure Dockerfile syntax is correct

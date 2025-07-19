@@ -11,6 +11,7 @@ This guide will help you deploy your Deep-Live-Cam face swap application to Rail
 ## Step 1: Prepare Your Repository
 
 Your repository should contain:
+
 - ✅ `Dockerfile` (already configured)
 - ✅ `railway.json` (deployment config)
 - ✅ `.dockerignore` (optimizes build)
@@ -42,16 +43,19 @@ Your repository should contain:
 ### Option B: Deploy via Railway CLI
 
 1. **Install Railway CLI**
+
    ```bash
    npm install -g @railway/cli
    ```
 
 2. **Login to Railway**
+
    ```bash
    railway login
    ```
 
 3. **Deploy**
+
    ```bash
    railway up
    ```
@@ -67,23 +71,26 @@ In Railway dashboard, you can set environment variables:
 ## Step 4: Access Your Deployed App
 
 Once deployed, Railway will provide:
+
 - **Public URL**: `https://your-app-name.railway.app`
 - **Custom Domain**: You can add your own domain in Railway settings
 
 ## Step 5: Monitor Your Deployment
 
-### Railway Dashboard Features:
+### Railway Dashboard Features
+
 - **Logs**: View real-time application logs
 - **Metrics**: Monitor CPU, memory usage
 - **Deployments**: Track deployment history
 - **Settings**: Configure environment variables
 
-### Health Check:
+### Health Check
+
 Your app includes a health endpoint: `https://your-app-name.railway.app/health`
 
 ## Troubleshooting
 
-### Common Issues:
+### Common Issues
 
 1. **Build Fails**
    - Check Railway logs for error messages
@@ -100,7 +107,7 @@ Your app includes a health endpoint: `https://your-app-name.railway.app/health`
    - Check if all dependencies installed
    - Verify GPU/CPU compatibility
 
-### Performance Tips:
+### Performance Tips
 
 1. **Use Railway Pro** (if needed)
    - Better CPU/memory allocation
@@ -114,12 +121,14 @@ Your app includes a health endpoint: `https://your-app-name.railway.app/health`
 
 ## Cost Estimation
 
-### Railway Free Tier:
+### Railway Free Tier
+
 - **$5 credit/month**
 - **512MB RAM, 0.5 CPU**
 - **Suitable for testing**
 
-### Railway Pro:
+### Railway Pro
+
 - **Pay-as-you-go pricing**
 - **Better performance**
 - **GPU instances available**

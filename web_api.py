@@ -44,8 +44,9 @@ class WebDeepLiveCam:
         modules.globals.keep_audio = True
         modules.globals.many_faces = False
         modules.globals.nsfw_filter = False  # Disable NSFW filtering
-        modules.globals.execution_providers = ['cpu']  # Default to CPU
-        modules.globals.max_memory = 4  # 4GB default
+        # Use CoreML for Mac M1 Pro for better performance
+        modules.globals.execution_providers = ['coreml', 'cpu']  # CoreML first, fallback to CPU
+        modules.globals.max_memory = 8  # 8GB for M1 Pro
         
     def update_status(self, status, progress=0, message=""):
         """Update processing status"""
@@ -62,6 +63,15 @@ web_app = WebDeepLiveCam()
 def health_check():
     """Health check endpoint"""
     return jsonify({"status": "healthy", "version": "1.8"})
+
+@app.route('/test_download', methods=['GET'])
+def test_download():
+    """Test download endpoint"""
+    test_file = "/tmp/simple_test.jpg"
+    if os.path.exists(test_file):
+        return send_file(test_file, as_attachment=True)
+    else:
+        return jsonify({"error": f"Test file not found at {test_file}"}), 404
 
 @app.route('/status', methods=['GET'])
 def get_status():
@@ -165,10 +175,34 @@ def process_image():
 @app.route('/download/<path:filepath>', methods=['GET'])
 def download_file(filepath):
     """Download processed file"""
-    if os.path.exists(filepath):
-        return send_file(filepath, as_attachment=True)
-    else:
-        return jsonify({"error": "File not found"}), 404
+    try:
+        # URL decode the filepath
+        import urllib.parse
+        decoded_path = urllib.parse.unquote(filepath)
+        
+        # Try to find the file by filename in temp directory
+        file_path = os.path.join(tempfile.gettempdir(), decoded_path)
+        
+        # If that doesn't work, try the path as-is
+        if not os.path.exists(file_path):
+            file_path = decoded_path
+            
+        # If the path starts with 'var/folders', it's already a full path
+        if decoded_path.startswith('var/folders'):
+            file_path = '/' + decoded_path
+        
+        print(f"DEBUG: Download request for '{filepath}' -> decoded: '{decoded_path}' -> final: '{file_path}'")
+        
+        if os.path.exists(file_path):
+            print(f"DEBUG: File found at: {file_path}")
+            return send_file(file_path, as_attachment=True)
+        else:
+            print(f"DEBUG: File not found at: {file_path}")
+            return jsonify({"error": "File not found"}), 404
+        
+    except Exception as e:
+        print(f"DEBUG: Download error: {str(e)}")
+        return jsonify({"error": f"Download failed: {str(e)}"}), 500
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
@@ -243,15 +277,24 @@ def process_frame():
             
         # Run face swap using the same logic as process_image, but for a single frame
         try:
+            print(f"DEBUG: Processing frame from {frame_path}")
+            print(f"DEBUG: Using source face from {LIVE_SOURCE_FACE_PATH}")
+            
             # Load source image
             source_image = cv2.imread(LIVE_SOURCE_FACE_PATH)
             if source_image is None:
+                print(f"DEBUG: Failed to load source image from {LIVE_SOURCE_FACE_PATH}")
                 return jsonify({"error": "Failed to load source image"}), 400
                 
-            # Extract source face
-            source_face = get_one_face(source_image)
+            print(f"DEBUG: Source image loaded, shape: {source_image.shape}")
+                
+            # Extract source face - ensure source_image is not None
+            source_face = get_one_face(source_image)  # type: ignore
             if source_face is None:
+                print(f"DEBUG: No face found in source image")
                 return jsonify({"error": "No face found in source image"}), 400
+                
+            print(f"DEBUG: Source face extracted successfully")
                 
             # Copy frame to output path
             import shutil
@@ -259,13 +302,27 @@ def process_frame():
             
             # Process frame with face swap
             try:
+                # Set up globals for processing
+                modules.globals.source_path = LIVE_SOURCE_FACE_PATH
+                modules.globals.target_path = frame_path
+                modules.globals.output_path = output_path
+                
+                # Process with face swap
                 for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+                    print(f"Processing frame with {frame_processor.NAME}")
                     frame_processor.process_image(LIVE_SOURCE_FACE_PATH, output_path, output_path)
+                    
             except Exception as e:
                 # If face detection fails, return original frame
                 import shutil
                 shutil.copy2(frame_path, output_path)
                 print(f"Face detection failed, returning original frame: {str(e)}")
+                
+            # Ensure we always have a valid output file
+            if not os.path.exists(output_path):
+                # If output doesn't exist, copy the original frame
+                shutil.copy2(frame_path, output_path)
+                print(f"Output file not created, using original frame")
                 
             # Check if output file was created
             if not os.path.exists(output_path):
@@ -343,6 +400,12 @@ def index():
                     </div>
                 </div>
                 <div id="liveStatus" style="margin-top: 10px; text-align: center; color: #666;"></div>
+                <div id="connectionStatus" style="margin-top: 5px; text-align: center; font-size: 12px; color: #888;"></div>
+                <div style="margin-top: 10px; text-align: center;">
+                    <label>Frame Rate: </label>
+                    <span id="currentFPS">3</span> FPS
+                    <input type="range" id="fpsSlider" min="1" max="5" value="3" style="margin-left: 10px;" onchange="updateFPS()">
+                </div>
             </div>
         </div>
         
@@ -447,8 +510,10 @@ def index():
             
             function showResult(outputPath) {
                 document.getElementById('result').style.display = 'block';
-                document.getElementById('resultImage').src = '/download/' + encodeURIComponent(outputPath);
-                document.getElementById('downloadLink').href = '/download/' + encodeURIComponent(outputPath);
+                // Use a simpler approach - just the filename
+                const filename = outputPath.split('/').pop();
+                document.getElementById('resultImage').src = '/download/' + filename;
+                document.getElementById('downloadLink').href = '/download/' + filename;
             }
             
             // Live webcam variables
@@ -460,9 +525,11 @@ def index():
             let isLiveModeActive = false;
             let lastFrameTime = 0;
             let isProcessingFrame = false; // Prevent concurrent frame processing
-            const TARGET_FPS = 3; // Further reduced to 3 FPS for better performance
-            const FRAME_INTERVAL = 1000 / TARGET_FPS;
+            let TARGET_FPS = 3; // Further reduced to 3 FPS for better performance
+            let FRAME_INTERVAL = 1000 / TARGET_FPS;
             let processingFrame = false; // Prevent overlapping requests
+            let frameCount = 0;
+            let lastFPSUpdate = 0;
             
             async function startLiveMode() {
                 try {
@@ -513,6 +580,7 @@ def index():
                     
                     isLiveModeActive = true;
                     document.getElementById('liveStatus').textContent = 'Live mode active - Processing frames...';
+                    document.getElementById('connectionStatus').textContent = '✅ Webcam connected';
                     
                     // Start frame processing loop
                     processLiveFrames();
@@ -540,6 +608,13 @@ def index():
                 document.getElementById('startLiveBtn').style.display = 'inline-block';
                 document.getElementById('stopLiveBtn').style.display = 'none';
                 document.getElementById('liveStatus').textContent = 'Live mode stopped';
+                document.getElementById('connectionStatus').textContent = '';
+            }
+            
+            function updateFPS() {
+                TARGET_FPS = parseInt(document.getElementById('fpsSlider').value);
+                FRAME_INTERVAL = 1000 / TARGET_FPS;
+                document.getElementById('currentFPS').textContent = TARGET_FPS;
             }
             
             async function processLiveFrames() {
@@ -557,6 +632,15 @@ def index():
                 
                 isProcessingFrame = true;
                 lastFrameTime = currentTime;
+                frameCount++;
+                
+                // Update FPS display every second
+                if (currentTime - lastFPSUpdate > 1000) {
+                    const actualFPS = Math.round(frameCount * 1000 / (currentTime - lastFPSUpdate));
+                    document.getElementById('currentFPS').textContent = actualFPS;
+                    frameCount = 0;
+                    lastFPSUpdate = currentTime;
+                }
                 
                 try {
                     const video = document.getElementById('webcamVideo');
@@ -575,13 +659,18 @@ def index():
                         formData.append('frame', blob, 'frame.jpg');
                         
                         try {
+                            console.log('Sending frame to server...');
                             const response = await fetch('/process_frame', {
                                 method: 'POST',
                                 body: formData
-                            });
+                            }, { timeout: 5000 }); // 5 second timeout
+                            
+                            console.log('Response status:', response.status);
+                            console.log('Response ok:', response.ok);
                             
                             if (response.ok) {
                                 const resultBlob = await response.blob();
+                                console.log('Received blob size:', resultBlob.size);
                                 const resultUrl = URL.createObjectURL(resultBlob);
                                 
                                 // Create image from result and draw to canvas
@@ -589,17 +678,31 @@ def index():
                                 img.onload = () => {
                                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                                    // Clean up the object URL to prevent memory leaks
+                                    URL.revokeObjectURL(resultUrl);
+                                    console.log('Processed frame displayed successfully');
+                                };
+                                img.onerror = () => {
+                                    console.error('Failed to load processed image');
+                                    // If image fails to load, show original frame
+                                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                                 };
                                 img.src = resultUrl;
                                 
                                 document.getElementById('liveStatus').textContent = `Live mode active - Processing at ${TARGET_FPS} FPS...`;
+                                document.getElementById('connectionStatus').textContent = '✅ Processing frames';
                             } else {
                                 const errorData = await response.json();
                                 console.error('Frame processing error:', errorData.error);
+                                // On error, show original frame
+                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                                 document.getElementById('liveStatus').textContent = 'Error processing frame: ' + errorData.error;
+                                document.getElementById('connectionStatus').textContent = '❌ Processing error';
                             }
                         } catch (error) {
                             console.error('Frame processing failed:', error);
+                            // Show original frame on error
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                             document.getElementById('liveStatus').textContent = 'Error: ' + error.message;
                         } finally {
                             isProcessingFrame = false;
@@ -623,18 +726,22 @@ def index():
     '''
 
 if __name__ == '__main__':
-    # Initialize core modules
-    modules.core.parse_args = lambda: None  # Disable argument parsing
+    # Get port from environment variable (for Railway) or use default
+    port = int(os.environ.get('PORT', 8000))
     
-    print("🚀 Starting Deep-Live-Cam Web API...")
-    print("📋 Available endpoints:")
-    print("   GET  /           - Web interface")
-    print("   GET  /health     - Health check") 
-    print("   GET  /status     - Processing status")
-    print("   GET  /live_status - Live mode status")
-    print("   POST /upload     - Upload files")
-    print("   POST /process_image - Process via JSON API")
-    print("   POST /process_frame - Process live webcam frame")
-    print("   GET  /download/<path> - Download results")
+    # Get host from environment variable or use default
+    host = os.environ.get('HOST', '0.0.0.0')
     
-    app.run(host='0.0.0.0', port=8000, debug=False) 
+    print(f"🚀 Starting Deep-Live-Cam Web API...")
+    print(f"📋 Available endpoints:")
+    print(f"   GET  /           - Web interface")
+    print(f"   GET  /health     - Health check")
+    print(f"   GET  /status     - Processing status")
+    print(f"   GET  /live_status - Live mode status")
+    print(f"   POST /upload     - Upload files")
+    print(f"   POST /process_image - Process via JSON API")
+    print(f"   POST /process_frame - Process live webcam frame")
+    print(f"   GET  /download/<path> - Download results")
+    
+    # Start the Flask app
+    app.run(host=host, port=port, debug=False) 
