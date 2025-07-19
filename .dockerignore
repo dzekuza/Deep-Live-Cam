@@ -39,18 +39,28 @@ Thumbs.db
 .git/
 .gitignore
 
-# Logs
-*.log
+# Documentation
+README.md
+*.md
+docs/
 
-# Local development
-.env
-.env.local
+# Media files (not needed in container)
+media/
+*.gif
+*.mp4
+*.avi
 
 # Test files
 test_*.py
 *_test.py
 
-# Documentation
-README.md
-CONTRIBUTING.md
-DEPLOYMENT_GUIDE.md 
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Local development files
+.env
+.env.local 
