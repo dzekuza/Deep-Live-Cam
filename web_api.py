@@ -86,6 +86,15 @@ def ping():
     """Simple ping endpoint for testing"""
     return jsonify({"message": "pong", "timestamp": time.time()})
 
+@app.route('/ready', methods=['GET'])
+def ready():
+    """Health check for Railway"""
+    return jsonify({
+        "status": "ready",
+        "timestamp": time.time(),
+        "environment": os.environ.get('RAILWAY_ENVIRONMENT', 'development')
+    })
+
 @app.route('/status', methods=['GET'])
 def get_status():
     """Get current processing status"""
@@ -760,8 +769,40 @@ if __name__ == '__main__':
         print(f"   POST /process_frame - Process live webcam frame")
         print(f"   GET  /download/<path> - Download results")
         
-        # Start the Flask app
-        app.run(host=host, port=port, debug=False)
+        # Use Gunicorn for production, Flask dev server for development
+        if os.environ.get('RAILWAY_ENVIRONMENT') == 'production':
+            # Production: Use Gunicorn
+            import gunicorn.app.base
+            
+            class StandaloneApplication(gunicorn.app.base.BaseApplication):
+                def __init__(self, app, options=None):
+                    self.options = options or {}
+                    self.application = app
+                    super().__init__()
+                
+                def load_config(self):
+                    for key, value in self.options.items():
+                        self.cfg.set(key.lower(), value)
+                
+                def load(self):
+                    return self.application
+            
+            options = {
+                'bind': f'{host}:{port}',
+                'workers': 1,
+                'worker_class': 'sync',
+                'timeout': 120,
+                'keepalive': 2,
+                'max_requests': 1000,
+                'max_requests_jitter': 50,
+                'preload_app': False
+            }
+            
+            StandaloneApplication(app, options).run()
+        else:
+            # Development: Use Flask dev server
+            app.run(host=host, port=port, debug=False)
+            
     except Exception as e:
         print(f"❌ Failed to start server: {str(e)}")
         import traceback
