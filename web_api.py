@@ -516,6 +516,7 @@ def index():
                     } catch (error) {
                         clearInterval(statusInterval);
                         alert('Status check failed: ' + error.message);
+                        document.getElementById('statusText').textContent = 'Error: ' + error.message;
                     }
                 }, 1000);
             }
@@ -548,14 +549,14 @@ def index():
                     // Check if source face is uploaded
                     const sourceFile = document.getElementById('sourceFile').files[0];
                     if (!sourceFile) {
-                        alert('Please first upload a source face image above');
+                        alert('Please upload a source face image first');
                         return;
                     }
                     
                     // Upload source face if not already done
                     const formData = new FormData();
                     formData.append('source', sourceFile);
-                    formData.append('target', sourceFile); // Use same file as target for upload
+                    formData.append('target', sourceFile); // Use same file for both
                     
                     const uploadResponse = await fetch('/upload', {
                         method: 'POST',
@@ -566,35 +567,38 @@ def index():
                         throw new Error('Failed to upload source face');
                     }
                     
-                    // Start webcam with smaller resolution for better performance
+                    // Start webcam
                     mediaStream = await navigator.mediaDevices.getUserMedia({ 
                         video: { 
-                            width: 320, 
-                            height: 240,
+                            width: 640, 
+                            height: 480,
                             facingMode: 'user'
                         } 
                     });
                     
                     const video = document.getElementById('webcamVideo');
                     video.srcObject = mediaStream;
-                    videoTrack = mediaStream.getVideoTracks()[0];
                     
-                    // Setup canvas with smaller size for better performance
+                    // Setup canvas for output
                     canvas = document.getElementById('outputCanvas');
                     ctx = canvas.getContext('2d');
-                    canvas.width = 320; // Reduced size
-                    canvas.height = 240; // Reduced size
+                    canvas.width = 640;
+                    canvas.height = 480;
                     
-                    // Show live interface
+                    // Show live container
                     document.getElementById('liveContainer').style.display = 'block';
                     document.getElementById('startLiveBtn').style.display = 'none';
                     document.getElementById('stopLiveBtn').style.display = 'inline-block';
                     
                     isLiveModeActive = true;
-                    document.getElementById('liveStatus').textContent = 'Live mode active - Processing frames...';
-                    document.getElementById('connectionStatus').textContent = '✅ Webcam connected';
+                    lastFrameTime = performance.now();
+                    lastFPSUpdate = performance.now();
+                    frameCount = 0;
                     
-                    // Start frame processing loop
+                    document.getElementById('liveStatus').textContent = 'Starting live mode...';
+                    document.getElementById('connectionStatus').textContent = '🔄 Initializing...';
+                    
+                    // Start processing frames
                     processLiveFrames();
                     
                 } catch (error) {
@@ -736,6 +740,21 @@ def index():
     </body>
     </html>
     '''
+
+@app.route('/api-status', methods=['GET'])
+def api_status():
+    """Quick API status check for Railway health checks"""
+    return jsonify({
+        "status": "running",
+        "timestamp": time.time(),
+        "version": "1.8",
+        "endpoints": [
+            "/health",
+            "/ping", 
+            "/ready",
+            "/api-status"
+        ]
+    })
 
 if __name__ == '__main__':
     try:
